@@ -40,7 +40,7 @@ To install SPOT-Contact-Single and it's dependencies following commands can be u
 
 To download the model check points from the dropbox use the following commands in the terminal:
 
-3. `wget https://servers.sparks-lab.org/downloads/contact_jits.tar.xz`
+3. `wget https://apisz.sparks-lab.org:8443/downloads/Resource/Protein/2_Protein_local_structure_prediction/contact_jits.tar.xz`
 4. `tar -xvf contact_jits.tar.xz`
 
 To install the dependencies and create a conda environment use the following commands
