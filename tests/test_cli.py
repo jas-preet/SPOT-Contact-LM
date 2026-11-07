@@ -2,6 +2,7 @@
 import shutil
 
 import numpy as np
+import pandas as pd
 import pytest
 
 SIMPLE = {"prot.fasta": ">prot\nMKVLA\n"}
@@ -70,7 +71,7 @@ def test_spot_single_dir_option_finds_features_elsewhere(run_cli, make_list, wri
     assert (out / "elsewhere.npy").exists()
 
 
-@pytest.mark.parametrize("sequence", ["MKBZUOJXA", "mkvla", "MKVLA*"])
+@pytest.mark.parametrize("sequence", ["MKBZUOJXA", "mkvla", "MKVLA*", "MK-LA"])
 def test_accepts_unusual_residues(run_cli, make_list, write_spot_single, tmp_path, sequence):
     expected = sequence.rstrip("*").upper()
     write_spot_single("odd", expected)
@@ -159,6 +160,23 @@ def test_rejects_two_files_with_the_same_protein_name(run_cli, write_spot_single
     file_list = tmp_path / "dupes.txt"
     file_list.write_text("\n".join(paths) + "\n")
     assert_clean_failure(run_cli("--file_list", file_list), "duplicate")
+
+
+def test_rejects_names_that_differ_only_by_case(run_cli, make_list, write_spot_single):
+    write_spot_single("abc", "MKVLA")
+    write_spot_single("ABC", "MKVLA")
+    records = {"abc.fasta": ">a\nMKVLA\n", "ABC.fasta": ">b\nMKVLA\n"}
+    assert_clean_failure(run_cli("--file_list", make_list(records)), "duplicate")
+
+
+def test_reports_nan_in_spot_single_output(run_cli, make_list, install, write_spot_single):
+    write_spot_single("gap", "MKVLA")
+    path = install / "data_files" / "out_spot_1d_sgl" / "gap.csv"
+    table = pd.read_csv(path, index_col=0, keep_default_na=False)
+    table["Psi"] = table["Psi"].astype(object)
+    table.loc[2, "Psi"] = "nan"
+    table.to_csv(path)
+    assert_clean_failure(run_cli("--file_list", make_list({"gap.fasta": ">x\nMKVLA\n"})), "gap.csv")
 
 
 def test_reports_unwritable_save_path_before_inference(run_cli, simple_list, esm_log, tmp_path):

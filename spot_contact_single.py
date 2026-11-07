@@ -19,7 +19,7 @@ REPO_DIR = Path(__file__).resolve().parent
 # ESM-1b has 1024 positions, two of which hold the start and end tokens
 ESM_MAX_RESIDUES = 1022
 # Letters ESM-1b cannot encode, such as J, are treated as unknown
-OUTSIDE_ESM_ALPHABET = re.compile(r"[^LAGVSERTIDPKQNFYMHWCXBUZO]")
+OUTSIDE_ESM_ALPHABET = re.compile(r"[^LAGVSERTIDPKQNFYMHWCXBUZO-]")
 
 # Each checkpoint with the features it takes and whether it predicts distance bins
 MODELS = (
@@ -202,6 +202,7 @@ def main():
     for feat1, feat2, prot_name, seq in tqdm(dataloader):
         attention = esm_attention(esm_model, batch_converter, prot_name[0], seq[0], args.esm_device)
         contacts = predict_contacts(models, attention, feat1, feat2, args.device)
+        del attention
         np.save(os.path.join(args.save_path, prot_name[0] + ".npy"), contacts)
 
 

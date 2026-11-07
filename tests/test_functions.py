@@ -58,4 +58,4 @@ def test_read_spot_single_accepts_nonstandard_residues(tmp_path):
 
 @pytest.mark.parametrize("length, measured_model_gb", [(150, 3.45), (250, 8.93), (300, 12.75)])
 def test_memory_estimate_covers_measured_model_peaks(length, measured_model_gb):
-    assert measured_model_gb + 7.5 <= estimated_cpu_memory_gb(length) < measured_model_gb + 10
+    assert measured_model_gb + 8 <= estimated_cpu_memory_gb(length) < measured_model_gb + 10

@@ -1,12 +1,13 @@
 import os
 import re
 import sys
+from collections import Counter
 
 import numpy as np
 import pandas as pd
 
-# Residues are single letters. A separator such as ":" means several chains, which is unsupported.
-INVALID_RESIDUE = re.compile(r"[^A-Z]")
+# Residues are single letters or gaps. A separator such as ":" means several chains.
+INVALID_RESIDUE = re.compile(r"[^A-Z-]")
 
 # Maximum accessible surface area per residue, used to convert absolute ASA to relative.
 # Anything else (X, B, Z, U, O, J, ...) falls back to UNKNOWN_RESIDUE_ASA.
@@ -18,9 +19,10 @@ MAX_ASA = dict(zip(
 UNKNOWN_RESIDUE_ASA = 1
 
 # Measured on CPU without oneDNN, where the largest models need about 0.145 GB per 1,000 residue
-# pairs. ESM-1b holds about 8 GB after loading, which makes this estimate high for long sequences.
+# pairs. ESM-1b and Python hold about 8.5 GB, part of which the largest models can reuse, so this
+# estimate is high for long sequences.
 CPU_GB_PER_RESIDUE_PAIR = 1.45e-4
-CPU_BASE_GB = 8
+CPU_BASE_GB = 8.5
 
 
 def estimated_cpu_memory_gb(length):
@@ -87,8 +89,9 @@ def load_proteins(file_list):
     if not proteins:
         sys.exit(f'error: {file_list} does not list any FASTA files')
 
-    names = [protein_name(path) for path, _ in proteins]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
+    # Compared without case, because file names collide that way on macOS and Windows
+    names = Counter(protein_name(path).casefold() for path, _ in proteins)
+    duplicates = sorted(name for name, count in names.items() if count > 1)
     if duplicates:
         sys.exit(f'error: duplicate protein names in {file_list}: {", ".join(duplicates)}')
     return proteins
@@ -105,11 +108,7 @@ def one_hot(seq):
 
 
 def get_fasta_2d(seq):
-    one_hot_feat = one_hot(seq)
-    temp = one_hot_feat[None, :, :]
-    temp = np.tile(temp, (temp.shape[1], 1, 1))
-    feature = np.concatenate([temp, np.transpose(temp, [1, 0, 2])], 2)
-    return feature
+    return get_feats_2d(one_hot(seq))
 
 
 def angle_norm(angle):
@@ -144,6 +143,9 @@ def read_spot_single(file_name, seq):
         (ss3_prob, ss8_prob, asa_relative, columns('HseU'), columns('HseD'), columns('CN'),
          angle_norm(columns('Psi')), angle_norm(columns('Phi')),
          angle_norm(columns('Theta')), angle_norm(columns('Tau'))), 1)
+    if not np.isfinite(spot_single_feat).all():
+        raise ValueError(f"{file_name}: contains values that are not numbers, "
+                         "regenerate it with SPOT-1D-Single")
     return spot_single_feat
 
 

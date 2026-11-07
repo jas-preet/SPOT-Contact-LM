@@ -34,13 +34,13 @@ We showed that the proposed method makes a significant improvement over a single
 
 | Sequence length | Estimated memory on CPU |
 | --- | --- |
-| 100 residues | 9 GB |
+| 100 residues | 10 GB |
 | 200 residues | 14 GB |
-| 300 residues | 21 GB |
-| 400 residues | 31 GB |
-| 1,000 residues | 153 GB |
+| 300 residues | 22 GB |
+| 400 residues | 32 GB |
+| 1,000 residues | 154 GB |
 
-These figures come from a Mac using a PyTorch build without oneDNN, and other systems may use less. The largest measured run was 27.6 GB, for 404 residues. The program estimates this before it starts, and stops if the estimate is more than three quarters of your RAM. To override that, use `--max_memory_gb`, but only if you are sure the memory is available, because running out can make the computer unresponsive.
+These figures come from a Mac using a PyTorch build without oneDNN, and other systems may use less. The largest measured run was 27.6 GB, for 404 residues. The program estimates this before it starts, and stops if the estimate is more than three quarters of your total RAM. This does not account for memory already in use, or for limits set by a container or job scheduler, so set `--max_memory_gb` to match in those cases. To go above the default limit, use `--max_memory_gb`, but only if you are sure the memory is available, because running out can make the computer unresponsive.
 
 ## Installation
 
@@ -68,7 +68,7 @@ SPOT-Contact-Single uses the output of [SPOT-1D-Single](https://github.com/jas-p
 python -W ignore spot_contact_single.py --file_list file_list/test_file_list.txt --save_path results/ --device cpu --esm_device cpu
 ```
 
-On a GPU, use `--device cuda:0 --esm_device cuda:0`. On CPU, `file_list/file_list_casp14.txt` includes a 404-residue protein, so it needs `--max_memory_gb 32` on computers with less than 42 GB of RAM.
+On a GPU, use `--device cuda:0 --esm_device cuda:0`. On CPU, `file_list/file_list_casp14.txt` includes a 404-residue protein, so it needs `--max_memory_gb 33` on computers with less than 43 GB of RAM.
 
 | Option | Description |
 | --- | --- |
