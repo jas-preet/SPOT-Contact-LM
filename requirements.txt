@@ -1,0 +1,5 @@
+fair-esm
+numpy
+pandas
+torch>=2.5
+tqdm

@@ -1,24 +1,97 @@
+import os
+import re
+import sys
+
 import numpy as np
 import pandas as pd
 
+# Residues are single letters. A separator such as ":" means several chains, which is unsupported.
+INVALID_RESIDUE = re.compile(r"[^A-Z]")
+
+# Maximum accessible surface area per residue, used to convert absolute ASA to relative.
+# Anything else (X, B, Z, U, O, J, ...) falls back to UNKNOWN_RESIDUE_ASA.
+MAX_ASA = dict(zip(
+    "ACDEFGHIKLMNPQRSTVWY",
+    (115, 135, 150, 190, 210, 75, 195, 175, 200, 170,
+     185, 160, 145, 180, 225, 115, 140, 155, 255, 230),
+))
+UNKNOWN_RESIDUE_ASA = 1
+
+# Measured on CPU without oneDNN, where the largest models need about 0.145 GB per 1,000 residue
+# pairs. ESM-1b holds about 8 GB after loading, which makes this estimate high for long sequences.
+CPU_GB_PER_RESIDUE_PAIR = 1.45e-4
+CPU_BASE_GB = 8
+
+
+def estimated_cpu_memory_gb(length):
+    return CPU_BASE_GB + CPU_GB_PER_RESIDUE_PAIR * length ** 2
+
+
+def default_memory_limit_gb():
+    """Three quarters of the computer's RAM, or no limit if that cannot be determined."""
+    try:
+        total_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+    except (AttributeError, OSError, ValueError):
+        return float('inf')
+    return 0.75 * total_bytes / 2 ** 30
+
+
 def read_list(file_name):
-    '''
-    returns list of proteins from file
-    '''
+    """
+    returns the list of proteins from a file, ignoring blank lines
+    """
     with open(file_name, 'r') as f:
-        text = f.read().splitlines()
-    return text
+        return [line.strip() for line in f if line.strip()]
 
 
 def read_fasta_file(fname):
     """
-    reads the sequence from the fasta file
+    reads the single sequence from a fasta file
     :param fname: filename (string)
-    :return: protein sequence  (string)
+    :return: upper-case protein sequence, without whitespace or a trailing stop "*" (string)
+    :raises ValueError: if the file does not hold exactly one valid sequence
     """
     with open(fname, 'r') as f:
-        AA = ''.join(f.read().splitlines()[1:])
-    return AA
+        lines = [line.strip() for line in f if line.strip()]
+
+    if not lines or not lines[0].startswith('>'):
+        raise ValueError(f"{fname}: expected a FASTA header line starting with '>'")
+    if any(line.startswith('>') for line in lines[1:]):
+        raise ValueError(f"{fname}: expected one sequence per file, found several")
+
+    sequence = ''.join(''.join(lines[1:]).split()).upper().rstrip('*')
+    if not sequence:
+        raise ValueError(f"{fname}: no sequence after the header")
+    invalid = INVALID_RESIDUE.search(sequence)
+    if invalid:
+        raise ValueError(f"{fname}: unsupported character {invalid.group()!r}, "
+                         "only single chains are supported")
+    return sequence
+
+
+def protein_name(path):
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def load_proteins(file_list):
+    """
+    reads every protein in a file list, exiting with a message if any cannot be used
+    :param file_list: path of a text file with one fasta path per line (string)
+    :return: list of (fasta path, protein sequence)
+    """
+    try:
+        paths = read_list(file_list)
+        proteins = [(path, read_fasta_file(path)) for path in paths]
+    except (OSError, ValueError) as error:
+        sys.exit(f'error: {error}')
+    if not proteins:
+        sys.exit(f'error: {file_list} does not list any FASTA files')
+
+    names = [protein_name(path) for path, _ in proteins]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        sys.exit(f'error: duplicate protein names in {file_list}: {", ".join(duplicates)}')
+    return proteins
 
 
 def one_hot(seq):
@@ -31,13 +104,13 @@ def one_hot(seq):
     return feat
 
 
-def get_fasta_2d(fname):
-    seq = read_fasta_file(fname)
+def get_fasta_2d(seq):
     one_hot_feat = one_hot(seq)
     temp = one_hot_feat[None, :, :]
     temp = np.tile(temp, (temp.shape[1], 1, 1))
     feature = np.concatenate([temp, np.transpose(temp, [1, 0, 2])], 2)
     return feature
+
 
 def angle_norm(angle):
     rad_angle = np.deg2rad(angle)
@@ -45,37 +118,32 @@ def angle_norm(angle):
     return angle_split
 
 
-rnam1_std = "ACDEFGHIKLMNPQRSTVWY-X"
-ASA_std = (115, 135, 150, 190, 210, 75, 195, 175, 200, 170,
-           185, 160, 145, 180, 225, 115, 140, 155, 255, 230, 1, 1)
-dict_rnam1_ASA = dict(zip(rnam1_std, ASA_std))
-
-
 def read_spot_single(file_name, seq):
-    data = pd.read_csv(file_name)
-    ss3_prob = np.concatenate((data['P3C'][:, None], data['P3E'][:, None], data['P3H'][:, None]), 1).astype(np.float32)
-    ss8_prob = np.concatenate((
-        data['P8C'][:, None], data['P8S'][:, None], data['P8T'][:, None], data['P8H'][:, None], data['P8G'][:, None],
-        data['P8I'][:, None], data['P8E'][:, None], data['P8B'][:, None]), 1).astype(np.float32)
+    """
+    reads the SPOT-1D-Single output for a protein
+    :param file_name: path of the csv file
+    :param seq: protein sequence the output must belong to (string)
+    :return: features (array)[L,23]
+    :raises ValueError: if the output belongs to a different sequence
+    """
+    data = pd.read_csv(file_name, keep_default_na=False)
+    if ''.join(data['AA']).upper() != seq:
+        raise ValueError(f"{file_name}: does not match the FASTA sequence, "
+                         "regenerate it with SPOT-1D-Single")
 
-    ASA_den = np.array([dict_rnam1_ASA[i] for i in seq]).astype(np.float32)[:, None]
-    asa = data['ASA'][:, None]
-    asa_relative = np.clip(asa / ASA_den, 0, 1)
+    def columns(*names):
+        return data[list(names)].to_numpy(dtype=np.float64)
 
-    hseu = data['HseU'][:, None]
-    hsed = data['HseD'][:, None]
-    CN = data['CN'][:, None]
+    ss3_prob = columns('P3C', 'P3E', 'P3H').astype(np.float32)
+    ss8_prob = columns('P8C', 'P8S', 'P8T', 'P8H', 'P8G', 'P8I', 'P8E', 'P8B').astype(np.float32)
 
-    psi = data['Psi'][:, None]
-    psi_split = angle_norm(psi)
-    phi = data['Phi'][:, None]
-    phi_split = angle_norm(phi)
-    theta = data['Theta'][:, None]
-    theta_split = angle_norm(theta)
-    tau = data['Tau'][:, None]
-    tau_split = angle_norm(tau)
+    ASA_den = np.array([MAX_ASA.get(residue, UNKNOWN_RESIDUE_ASA) for residue in seq]).astype(np.float32)[:, None]
+    asa_relative = np.clip(columns('ASA') / ASA_den, 0, 1)
+
     spot_single_feat = np.concatenate(
-        (ss3_prob, ss8_prob, asa_relative, hseu, hsed, CN, psi_split, phi_split, theta_split, tau_split), 1)
+        (ss3_prob, ss8_prob, asa_relative, columns('HseU'), columns('HseD'), columns('CN'),
+         angle_norm(columns('Psi')), angle_norm(columns('Phi')),
+         angle_norm(columns('Theta')), angle_norm(columns('Tau'))), 1)
     return spot_single_feat
 
 
@@ -84,4 +152,3 @@ def get_feats_2d(feats):
     temp = np.tile(temp, (temp.shape[1], 1, 1))
     feature = np.concatenate([temp, np.transpose(temp, [1, 0, 2])], 2)
     return feature
-
