@@ -4,6 +4,7 @@
 
 [![Paper](https://img.shields.io/badge/Bioinformatics-2022-1f6feb)](https://doi.org/10.1093/bioinformatics/btac053)
 [![Model on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-checkpoints-ffcc4d)](https://huggingface.co/Jas-preet/SPOT-Contact-LM)
+[![Dataset on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-dataset-ffcc4d)](https://huggingface.co/datasets/Jas-preet/SPOT-datasets)
 [![Tests](https://github.com/jas-preet/SPOT-Contact-LM/actions/workflows/tests.yml/badge.svg)](https://github.com/jas-preet/SPOT-Contact-LM/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -20,6 +21,7 @@ Accurate contact maps are essential for predicting protein structure and functio
 - [Output](#output)
 - [Working with the output](#working-with-the-output)
 - [Limitations](#limitations)
+- [Datasets](#datasets)
 - [Related tools](#related-tools)
 - [Tests](#tests)
 - [Citation](#citation)
@@ -238,6 +240,10 @@ plt.savefig("T1046s1-D1_contacts.png", dpi=150)
 - For proteins with many homologs, profile-based methods are more accurate.
 - The GPU checkpoints only run on `cuda:0`, because of how they were exported with `torch.jit.trace`.
 - The training code is not included.
+
+## Datasets
+
+The training set is the SPOT-1D-Single set from ProteinNet. Its sequences, per-residue labels and the SPOT-2018-HQ and CASP14-FM lists are on Hugging Face as [Jas-preet/SPOT-datasets](https://huggingface.co/datasets/Jas-preet/SPOT-datasets). Contact maps are not included; they can be computed from the PDB structures (Cβ–Cβ distance of at most 8 Å).
 
 ## Related tools
 
