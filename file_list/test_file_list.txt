@@ -1,1 +1,1 @@
-/home/jaspreet/jaspreet_data/text_data/inputs/fasta/5LOS_A.fasta
+data_files/fasta/T1046s1-D1.fasta

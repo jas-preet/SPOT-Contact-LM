@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.idea/
+.venv/
+venv/
+
+# Downloaded checkpoints
+contact_jits/
+contact_jits.tar.xz
